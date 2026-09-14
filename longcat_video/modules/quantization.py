@@ -184,25 +184,32 @@ def load_quantized_dit(checkpoint_dir: str, subfolder: str = "base_model_int8", 
     # Override with kwargs
     config.update(kwargs)
 
-    # Instantiate model (empty weights)
-    model = LongCatVideoAvatarTransformer3DModel(**config)
+    # Instantiate model (empty weights) in bf16 to halve CPU RAM peak
+    torch.set_default_dtype(torch.bfloat16)
+    try:
+        model = LongCatVideoAvatarTransformer3DModel(**config)
+    finally:
+        torch.set_default_dtype(torch.float32)
 
-    # Replace Linear layers with QuantizedLinear (empty)
+    # Replace Linear layers with QuantizedLinear in-place so old fp32 weights
+    # are freed as we go, instead of being pinned by a pending-replacement dict
+    import gc
     skip_patterns = DEFAULT_SKIP_PATTERNS
-    modules_to_replace = {}
-    for name, module in model.named_modules():
-        if isinstance(module, nn.Linear):
-            should_skip = any(pattern in name for pattern in skip_patterns)
-            if not should_skip:
-                ql = QuantizedLinear(module.in_features, module.out_features, bias=module.bias is not None)
-                modules_to_replace[name] = ql
-
-    for name, ql in modules_to_replace.items():
+    linear_names = [
+        name for name, module in model.named_modules()
+        if isinstance(module, nn.Linear)
+        and not any(pattern in name for pattern in skip_patterns)
+    ]
+    for name in linear_names:
         parts = name.split(".")
         parent = model
         for part in parts[:-1]:
             parent = getattr(parent, part)
-        setattr(parent, parts[-1], ql)
+        linear = getattr(parent, parts[-1])
+        setattr(parent, parts[-1], QuantizedLinear(
+            linear.in_features, linear.out_features, bias=linear.bias is not None))
+        del linear
+    gc.collect()
 
     # Load quantized state dict
     index_path = os.path.join(quantized_dir, "quantized_model.safetensors.index.json")
