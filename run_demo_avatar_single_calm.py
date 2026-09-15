@@ -147,8 +147,22 @@ def generate(args):
     print(f"[INFO] Target generation duration: {generate_duration:.2f}s")
 
     # prepare distributed environment
+    if 'RANK' not in os.environ:
+        # Direct `python` launch instead of torchrun: assume single process
+        print("[INFO] RANK not set (direct launch), assuming single-process run")
+        os.environ.setdefault('RANK', '0')
+        os.environ.setdefault('WORLD_SIZE', '1')
+        os.environ.setdefault('LOCAL_RANK', '0')
+        os.environ.setdefault('MASTER_ADDR', '127.0.0.1')
+        os.environ.setdefault('MASTER_PORT', '29517')
     rank = int(os.environ['RANK'])
     num_gpus = torch.cuda.device_count()
+    if num_gpus == 0:
+        raise RuntimeError(
+            "No CUDA GPU detected. This pipeline requires a GPU "
+            "(AutoDL: switch to GPU mode 有卡模式). Without a GPU only the "
+            "input/audio/segment checks above can run."
+        )
     local_rank = rank % num_gpus
     torch.cuda.set_device(local_rank)
     dist.init_process_group(backend="nccl", timeout=datetime.timedelta(seconds=3600*24))
