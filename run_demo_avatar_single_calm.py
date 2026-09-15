@@ -73,6 +73,7 @@ def generate(args):
 
     # load parsed args
     input_json = args.input_json
+    audio_path_override = args.audio_path
     checkpoint_dir = args.checkpoint_dir
     context_parallel_size = args.context_parallel_size
     stage_1 = args.stage_1
@@ -111,6 +112,39 @@ def generate(args):
     prompt = input_data['prompt']
     negative_prompt = input_data.get('negative_prompt', DEFAULT_NEGATIVE_PROMPT)
     raw_speech_path = input_data['cond_audio']['person1']
+    
+    # override audio path if provided
+    if audio_path_override is not None:
+        raw_speech_path = audio_path_override
+        print(f"[INFO] Overriding audio path to: {raw_speech_path}")
+
+    # auto-calculate num_segments based on audio duration
+    print(f"[INFO] Loading audio to calculate duration: {raw_speech_path}")
+    preloaded_speech_array, sr = librosa.load(raw_speech_path, sr=16000)
+    audio_duration = len(preloaded_speech_array) / sr
+    print(f"[INFO] Audio duration: {audio_duration:.2f}s")
+    
+    # calculate segment durations based on model type
+    first_segment_duration = num_frames / save_fps
+    continuation_duration = (num_frames - num_cond_frames) / save_fps
+    print(f"[INFO] First segment duration: {first_segment_duration:.2f}s, continuation duration: {continuation_duration:.2f}s")
+    
+    # auto-calculate num_segments
+    if audio_duration <= first_segment_duration:
+        auto_num_segments = 1
+    else:
+        auto_num_segments = math.ceil((audio_duration - first_segment_duration) / continuation_duration) + 1
+    
+    # use auto-calculated num_segments unless explicitly overridden
+    if args.num_segments == 1:  # default value, user didn't override
+        num_segments = auto_num_segments
+        print(f"[INFO] Auto-calculated num_segments: {num_segments}")
+    else:
+        print(f"[INFO] Using user-specified num_segments: {num_segments}")
+    
+    # calculate target generation duration
+    generate_duration = num_frames / save_fps + (num_segments-1)*(num_frames-num_cond_frames) / save_fps
+    print(f"[INFO] Target generation duration: {generate_duration:.2f}s")
 
     # prepare distributed environment
     rank = int(os.environ['RANK'])
@@ -198,13 +232,19 @@ def generate(args):
     if cp_rank == 0:
         # extract vocal
         temp_vocal_path = extract_vocal_from_speech(raw_speech_path, f"/tmp/temp_speech_{generate_random_uid()}_{global_rank}_vocal.wav", vocal_separator, audio_output_dir_temp)
-        assert temp_vocal_path is not None and os.path.exists(temp_vocal_path), f"No vocal detected"
-
+        if temp_vocal_path is not None and os.path.exists(temp_vocal_path):
+            # use extracted vocal
+            speech_array, sr = librosa.load(temp_vocal_path, sr=16000)
+        else:
+            # fallback to preloaded audio if vocal extraction fails
+            print("[WARN] Vocal extraction failed, using preloaded audio")
+            speech_array = preloaded_speech_array
+            sr = 16000
+            temp_vocal_path = None
+        
         # audio padding to target length
-        generate_duration = num_frames / save_fps + (num_segments-1)*(num_frames-num_cond_frames) / save_fps
-        speech_array, sr = librosa.load(temp_vocal_path, sr=16000)
-        source_duraion = len(speech_array) / sr
-        added_sample_nums = math.ceil((generate_duration - source_duraion) * sr)
+        source_duration = len(speech_array) / sr
+        added_sample_nums = math.ceil((generate_duration - source_duration) * sr)
         if added_sample_nums > 0:
             speech_array = np.append(speech_array, [0.]*added_sample_nums)
 
@@ -219,7 +259,7 @@ def generate(args):
             context_parallel_util.cp_broadcast(full_audio_emb_tensor_shape_list)
             context_parallel_util.cp_broadcast(full_audio_emb)
 
-        if os.path.exists(temp_vocal_path):
+        if temp_vocal_path is not None and os.path.exists(temp_vocal_path):
             os.remove(temp_vocal_path)
 
     elif context_parallel_util.get_cp_size() > 1:
@@ -376,6 +416,12 @@ def _parse_args():
         '--input_json',
         type=str,
         default='assets/avatar/single_example_1.json'
+    )
+    parser.add_argument(
+        '--audio_path',
+        type=str,
+        default=None,
+        help='Override audio path from JSON. Useful for switching between remote/local paths.'
     )
     parser.add_argument(
         '--output_dir',

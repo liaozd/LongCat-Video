@@ -2,6 +2,6 @@
     "prompt": "A professional Chinese female finance news anchor sits upright at a news desk in a modern studio, delivering a report in a calm and steady tone. Neutral composed facial expression with subtle natural micro-expressions, minimal head movement, hands resting on the desk with only small natural gestures. Fixed medium shot, soft even studio lighting.",
     "cond_image": "/root/autodl-fs/cangji-林知予_720.png",
     "cond_audio": {
-        "person1": "/root/autodl-fs/finance_anchor.wav"
+        "person1": "/root/autodl-fs/design_finance.wav"
     }
 }
