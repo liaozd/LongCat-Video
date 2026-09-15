@@ -136,7 +136,7 @@ def generate(args):
         auto_num_segments = math.ceil((audio_duration - first_segment_duration) / continuation_duration) + 1
     
     # use auto-calculated num_segments unless explicitly overridden
-    if args.num_segments == 1:  # default value, user didn't override
+    if args.num_segments <= 0:  # 0 (default) = auto-calculate
         num_segments = auto_num_segments
         print(f"[INFO] Auto-calculated num_segments: {num_segments}")
     else:
@@ -399,7 +399,9 @@ def generate(args):
             generator=generator,
             output_type='both',
             use_kv_cache=True,
-            offload_kv_cache=False,
+            # KV cache offloaded to CPU: CFG adds a batch-2 forward whose activations
+            # would OOM a 48G card with resident KV cache
+            offload_kv_cache=True,
             enhance_hf=True if not use_distill else False,
             audio_emb=audio_emb,
             ref_latent=ref_latent,
@@ -451,7 +453,8 @@ def _parse_args():
     parser.add_argument(
         '--num_segments',
         type=int,
-        default=1
+        default=0,
+        help='0 = auto-calculate from audio duration'
     )
     parser.add_argument(
         '--num_inference_steps',
