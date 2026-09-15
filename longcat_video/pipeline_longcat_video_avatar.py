@@ -824,18 +824,22 @@ class LongCatVideoAvatarPipeline:
                 )
 
                 if self.do_classifier_free_guidance:
-                    timestep_uncond = t.expand(latents.shape[0]).to(dit_dtype)
-                    noise_pred_uncond = self.dit(
-                        hidden_states=latents,
-                        timestep=timestep_uncond,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        encoder_attention_mask=negative_prompt_attention_mask,
-                        audio_embs=audio_unond_embs
-                    )
-
                     noise_pred_uncond_text, noise_pred_cond = noise_pred.chunk(2)
 
-                    noise_pred = noise_pred_uncond + text_guidance_scale * (noise_pred_cond - noise_pred_uncond_text) + audio_guidance_scale * (noise_pred_uncond_text - noise_pred_uncond)
+                    if audio_guidance_scale == 1.0:
+                        # zero-audio branch cancels exactly at audio scale 1.0:
+                        # uncond + t*(cond - uncond_text) + 1*(uncond_text - uncond) = t*cond + (1-t)*uncond_text
+                        noise_pred = text_guidance_scale * noise_pred_cond + (1.0 - text_guidance_scale) * noise_pred_uncond_text
+                    else:
+                        timestep_uncond = t.expand(latents.shape[0]).to(dit_dtype)
+                        noise_pred_uncond = self.dit(
+                            hidden_states=latents,
+                            timestep=timestep_uncond,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_attention_mask=negative_prompt_attention_mask,
+                            audio_embs=audio_unond_embs
+                        )
+                        noise_pred = noise_pred_uncond + text_guidance_scale * (noise_pred_cond - noise_pred_uncond_text) + audio_guidance_scale * (noise_pred_uncond_text - noise_pred_uncond)
 
                 # negate for scheduler compatibility
                 noise_pred = -noise_pred
@@ -1101,23 +1105,26 @@ class LongCatVideoAvatarPipeline:
                     )
 
                 if self.do_classifier_free_guidance:
-                    timestep_uncond = t.expand(latents.shape[0]).to(dit_dtype)
-                    timestep_uncond = timestep_uncond.unsqueeze(-1).repeat(1, latent_model_input.shape[2])
-                    timestep_uncond[:, :1] = 0
-
-                    noise_pred_uncond = self.dit(
-                        hidden_states=latents,
-                        timestep=timestep_uncond,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        encoder_attention_mask=negative_prompt_attention_mask,
-                        num_cond_latents=1,
-                        audio_embs=audio_unond_embs,
-                        ref_target_masks=ref_target_masks
-                    )
-
                     noise_pred_uncond_text, noise_pred_cond = noise_pred.chunk(2)
-                    
-                    noise_pred = noise_pred_uncond + text_guidance_scale * (noise_pred_cond - noise_pred_uncond_text) + audio_guidance_scale * (noise_pred_uncond_text - noise_pred_uncond)
+
+                    if audio_guidance_scale == 1.0:
+                        # zero-audio branch cancels exactly at audio scale 1.0 (see generate_at2v)
+                        noise_pred = text_guidance_scale * noise_pred_cond + (1.0 - text_guidance_scale) * noise_pred_uncond_text
+                    else:
+                        timestep_uncond = t.expand(latents.shape[0]).to(dit_dtype)
+                        timestep_uncond = timestep_uncond.unsqueeze(-1).repeat(1, latent_model_input.shape[2])
+                        timestep_uncond[:, :1] = 0
+
+                        noise_pred_uncond = self.dit(
+                            hidden_states=latents,
+                            timestep=timestep_uncond,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_attention_mask=negative_prompt_attention_mask,
+                            num_cond_latents=1,
+                            audio_embs=audio_unond_embs,
+                            ref_target_masks=ref_target_masks
+                        )
+                        noise_pred = noise_pred_uncond + text_guidance_scale * (noise_pred_cond - noise_pred_uncond_text) + audio_guidance_scale * (noise_pred_uncond_text - noise_pred_uncond)
 
                 # negate for scheduler compatibility
                 noise_pred = -noise_pred
@@ -1451,28 +1458,31 @@ class LongCatVideoAvatarPipeline:
                     )
 
                 if self.do_classifier_free_guidance:
-                    timestep_uncond = t.expand(latents.shape[0]).to(dit_dtype)
-                    timestep_uncond = timestep_uncond.unsqueeze(-1).repeat(1, latent_model_input.shape[2])
-                    if not use_kv_cache:
-                        timestep_uncond[:, :num_cond_latents] = 0
-
-                    noise_pred_uncond = self.dit(
-                        hidden_states=latents,
-                        timestep=timestep_uncond,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        encoder_attention_mask=negative_prompt_attention_mask,
-                        num_cond_latents=num_cond_latents,
-                        kv_cache_dict=kv_cache_dict,
-                        audio_embs=audio_unond_embs,
-                        num_ref_latents=num_ref_latents, 
-                        ref_img_index=ref_img_index,
-                        mask_frame_range=mask_frame_range,
-                        ref_target_masks=ref_target_masks
-                    )
-
                     noise_pred_uncond_text, noise_pred_cond = noise_pred.chunk(2)
-                    
-                    noise_pred = noise_pred_uncond + text_guidance_scale * (noise_pred_cond - noise_pred_uncond_text) + audio_guidance_scale * (noise_pred_uncond_text - noise_pred_uncond)
+
+                    if audio_guidance_scale == 1.0:
+                        # zero-audio branch cancels exactly at audio scale 1.0 (see generate_at2v)
+                        noise_pred = text_guidance_scale * noise_pred_cond + (1.0 - text_guidance_scale) * noise_pred_uncond_text
+                    else:
+                        timestep_uncond = t.expand(latents.shape[0]).to(dit_dtype)
+                        timestep_uncond = timestep_uncond.unsqueeze(-1).repeat(1, latent_model_input.shape[2])
+                        if not use_kv_cache:
+                            timestep_uncond[:, :num_cond_latents] = 0
+
+                        noise_pred_uncond = self.dit(
+                            hidden_states=latents,
+                            timestep=timestep_uncond,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_attention_mask=negative_prompt_attention_mask,
+                            num_cond_latents=num_cond_latents,
+                            kv_cache_dict=kv_cache_dict,
+                            audio_embs=audio_unond_embs,
+                            num_ref_latents=num_ref_latents, 
+                            ref_img_index=ref_img_index,
+                            mask_frame_range=mask_frame_range,
+                            ref_target_masks=ref_target_masks
+                        )
+                        noise_pred = noise_pred_uncond + text_guidance_scale * (noise_pred_cond - noise_pred_uncond_text) + audio_guidance_scale * (noise_pred_uncond_text - noise_pred_uncond)
                 
                 # negate for scheduler compatibility
                 noise_pred = -noise_pred
