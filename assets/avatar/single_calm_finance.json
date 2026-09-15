@@ -1,6 +1,7 @@
 {
-    "prompt": "A professional Chinese female finance news anchor sits upright at a news desk in a modern studio, delivering a report in a calm and steady tone. Neutral composed facial expression with subtle natural micro-expressions, minimal head movement, hands resting on the desk with only small natural gestures. Fixed medium shot, soft even studio lighting.",
-    "cond_image": "/root/autodl-fs/cangji-林知予_720.png",
+    "prompt": "A professional Chinese female presenter sits calmly and speaks in a gentle, unhurried conversational tone. Relaxed face with small gentle mouth movements naturally matched to speech, no visible neck or jaw muscle tension, still relaxed shoulders, minimal head movement. Fixed medium shot, soft even studio lighting.",
+    "negative_prompt": "Close-up, Bright tones, overexposed, blurred details, subtitles, style, works, paintings, images, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, messy background, three legs, many people in the background, walking backwards, exaggerated facial expressions, dramatic hand gestures, exaggerated head movements, exaggerated mouth opening, dramatic lip movements, bulging neck muscles, neck strain",
+    "cond_image": "/root/autodl-fs/cangji-林知予-GPT-image2.0-720.png",
     "cond_audio": {
         "person1": "/root/autodl-fs/design_finance.wav"
     }
